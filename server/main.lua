@@ -166,3 +166,44 @@ end
 exports('IsPlayerInSafeZone', IsPlayerInSafeZone)
 exports('GetPlayerZone', GetPlayerZone)
 exports('GetPlayersInZones', GetPlayersInZones)
+
+-- Server-side geometry for spawn policy. A cached player-enter report cannot
+-- answer whether arbitrary terrain proposals are inside a protected area.
+local function GeometryNumber(value)
+    return type(value) == 'number' and value == value and math.abs(value) <= 100000
+end
+
+local function GeometryPosition(value)
+    local kind = type(value)
+    return (kind == 'table' or kind == 'vector3' or kind == 'vector4')
+        and GeometryNumber(value.x) and GeometryNumber(value.y) and GeometryNumber(value.z)
+end
+
+local function SafeZoneGeometry()
+    if type(Config.SafeZones) ~= 'table' then return nil end
+    local snapshot = {}
+    for index, zone in pairs(Config.SafeZones) do
+        if type(index) ~= 'number' or index % 1 ~= 0 or index < 1 or index > #Config.SafeZones
+            or type(zone) ~= 'table' or not GeometryPosition(zone.coords)
+            or not GeometryNumber(zone.radius) or zone.radius <= 0 then return nil end
+        snapshot[index] = {name=zone.name, radius=zone.radius,
+            coords={x=zone.coords.x,y=zone.coords.y,z=zone.coords.z}}
+    end
+    for index=1,#Config.SafeZones do if not snapshot[index] then return nil end end
+    return snapshot
+end
+
+local function SafeZoneDistance(coords)
+    if not GeometryPosition(coords) then return nil end
+    local zones = SafeZoneGeometry()
+    if not zones then return nil end
+    local best, nearest = 99999.0, nil
+    for _, zone in ipairs(zones) do
+        local distance = math.sqrt(DistanceSq(coords, zone.coords)) - zone.radius
+        if distance < best then best, nearest = distance, zone end
+    end
+    return best, nearest
+end
+
+exports('GetSafeZones', SafeZoneGeometry)
+exports('GetSafeZoneDistance', SafeZoneDistance)

@@ -70,10 +70,8 @@ local function GetNearestZone()
     return nearestZone, nearestDistance
 end
 
-local function ApplyProtection()
+local function ApplyProtection(ped)
     if not isReady or not Config.Protection then return end
-
-    local ped = Corex.Functions.GetPed()
 
     if Config.Protection.godMode then
         SetEntityInvincible(ped, true)
@@ -177,13 +175,21 @@ CreateThread(function()
     while true do
         if isInSafeZone then
             Wait(0)
-            ApplyProtection()
+            -- The membership loop may have exited the zone during Wait. Never
+            -- re-enable invincibility after its exit handler has removed it.
+            if not isInSafeZone then goto continueProtection end
+            -- Core.GetPed is a PlayerPedId wrapper. Read once locally for this
+            -- frame, avoiding cross-resource dispatch without caching a stale
+            -- player handle across respawns.
+            local ped = PlayerPedId()
+            ApplyProtection(ped)
             if Config.Protection and Config.Protection.disableWeapons then
-                ForceUnarmedInterval(Corex.Functions.GetPed())
+                ForceUnarmedInterval(ped)
             end
         else
             Wait(500)
         end
+        ::continueProtection::
     end
 end)
 
